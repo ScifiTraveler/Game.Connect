@@ -10,7 +10,7 @@ public class LevelController : MonoBehaviour
     [SerializeField] private Button[] levelButtonsArray;
     [SerializeField] private Button extraButton;
 
-    private int unlokedLevel;
+    private int unlockedLevel;
     private string unlockLevelKey = "UnLockedLevel";
 
     private void Awake()
@@ -21,17 +21,19 @@ public class LevelController : MonoBehaviour
         }
     }
     private void Start()
-    {
+    {        
         CheckLevelBtns();
     }
 
     public void CheckLevelBtns()
     {
-        unlokedLevel = PlayerPrefs.GetInt(unlockLevelKey, 0); //默认解锁第一关
+        unlockedLevel = PlayerPrefs.GetInt(unlockLevelKey, 0); //默认解锁第一关
 
+        unlockedLevel = 9;
+        
         for (int i = 0; i < levelButtonsArray.Length; i++)
         {
-            if (i <= unlokedLevel)
+            if (i <= unlockedLevel)
             {
                 SetLevelBtnUnlock(levelButtonsArray[i]);
             }
@@ -41,7 +43,7 @@ public class LevelController : MonoBehaviour
             }
         }
 
-        if (unlokedLevel > 9)
+        if (unlockedLevel > 9)
         {
             extraButton.transform.localScale = Vector3.one;
         }

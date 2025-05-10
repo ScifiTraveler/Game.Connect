@@ -8,6 +8,7 @@ public class TileData : MonoBehaviour
 {
     [SerializeField] private GameObject interactBtn;
     [SerializeField] private GameObject selectMask;
+    [SerializeField] private GameObject isObstacle;
     [SerializeField] private Image tilePathImg;
     [SerializeField] private Sprite[] pathLineSprits;
     [SerializeField] private Image iconImage;
@@ -18,6 +19,7 @@ public class TileData : MonoBehaviour
     private int xPos;
     private int yPos;
     private bool interactable;
+    private bool obstacle;
    
     private Coroutine pathLineEffectCoroutine;
 
@@ -34,18 +36,32 @@ public class TileData : MonoBehaviour
             interactBtn.SetActive(value);            
         }
     }
-    
+    public bool OBSTACLE
+    {
+        get { return obstacle; }
+        set
+        {
+            obstacle = value;
+            isObstacle.SetActive(value);
+        }
+    }
 
-    public void SetTileData(int _id, int _xPos, int _yPos, bool _interacatble,Sprite _icon)
+    public void SetTileData(int _id, int _xPos, int _yPos, bool _interacatble,
+        Sprite _icon,bool _obstacle)
     {
         ID = _id;
         XPOS = _xPos;
         YPOS = _yPos;
         INTERACTBLE = _interacatble;
+        OBSTACLE = _obstacle;
        
         iconImage.sprite = _icon;
     }
-
+    
+    public bool IsEmpty()
+    {
+        return !INTERACTBLE && !OBSTACLE;
+    }
     public void OnClick()
     {        
         GridsBoard.Instance.TileSelected(this);

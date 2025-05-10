@@ -43,7 +43,7 @@ public class MiniGameController : MonoBehaviour
     }
 
     private void Update()
-    {
+    {   // EXTRA倒计时
         if (onExtraLevel && !isPaused)
         {            
             timer -= Time.deltaTime;
@@ -53,7 +53,7 @@ public class MiniGameController : MonoBehaviour
                 EndGame("Challenge Faliled");
             }
         }
-
+        // 普通关卡计时
         if (onNormalLevel && !isPaused)
         {
             timer += Time.deltaTime;
@@ -102,11 +102,9 @@ public class MiniGameController : MonoBehaviour
     public void SetRemainTile(int Tilesnum)
     {
         remainTile = Tilesnum;
+        remainTileTxt.text = remainTile.ToString();
     }
-    public void ShowRemainTileText(int value)
-    {
-        remainTileTxt.text = (remainTile += value).ToString();
-    }
+    
     private void CountDownTimeUIUpdate(float time)
     {
         time = Mathf.Max(0, time); // 防止负数,取较大值
@@ -160,7 +158,9 @@ public class MiniGameController : MonoBehaviour
         {
             yield break;
         }
+
         timer = 0;
+
         onNormalLevel = true;
     }
 

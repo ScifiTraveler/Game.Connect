@@ -13,9 +13,16 @@ public class GridsBoard : MonoBehaviour
 
     private TileData tileSelected;
     
-    private TileData[,] tilesArray;
+    private TileData[,] tilesBoardArray;
+
+    // 临时列表
+    private List<TileData> pathPointsListTemporary;
+    private Dictionary<int, List<TileData>> pathLineTilesDicTemporary;
+
+    // 正式列表
     private List<TileData> pathPointsList;
-    private Dictionary<int, List<TileData>> pathLineTilesDictionary;
+    private Dictionary<int, List<TileData>> pathLineTilesDic;
+
     private Dictionary<int,List<TileData>> remainingTilesListDictionary;
 
     private int xLines;
@@ -35,9 +42,14 @@ public class GridsBoard : MonoBehaviour
         xLines = GridPanel.GetChild(0).childCount;
         yLines = GridPanel.childCount;
 
-        tilesArray = new TileData[xLines, yLines];
-        pathPointsList = new List<TileData>();
-        pathLineTilesDictionary = new Dictionary<int, List<TileData>>();
+        tilesBoardArray = new TileData[xLines, yLines];
+
+        pathPointsListTemporary = new List<TileData>();
+        pathLineTilesDicTemporary = new Dictionary<int, List<TileData>>();
+
+        pathPointsList = new();
+        pathLineTilesDic = new();
+
         remainingTilesListDictionary = new Dictionary<int, List<TileData>>();  
     }
 
@@ -50,26 +62,15 @@ public class GridsBoard : MonoBehaviour
             for (int x = 0; x < xLines; x++)
             {
                 TileData tile = GridPanel.GetChild(y).GetChild(x).GetComponent<TileData>();
-                tile.SetTileData(0, x, y, false, null);
+                tile.SetTileData(0, x, y, false, null, false);
                 tile.IsSelected(false);
-                tilesArray[x, y] = tile;                      
+                tilesBoardArray[x, y] = tile;
             }
         }
         remainingTilesListDictionary.Clear();
     }
 
-    private void TilesMatch(TileData tile1, TileData tile2)
-    {
-        SoundManager.Instance.TileMatchSound();
-        tile1.TileMatchEffect();
-        tile2.TileMatchEffect();
-        MiniGameController.Instance.ShowRemainTileText(-2);
-
-        remainingTilesListDictionary[tile1.ID].Remove(tile1);
-        remainingTilesListDictionary[tile2.ID].Remove(tile2);
-
-        CheckRemainingTilePairs();
-    }
+    
     public void TileSelected(TileData _tileSelect)
     {
         if (tileSelected != null)
@@ -82,13 +83,16 @@ public class GridsBoard : MonoBehaviour
 
             if (HasValidPath(tileSelected, _tileSelect))
             {// Tile Match Check Available Path
+                TemporaryListToAvaliableList();
+
                 SoundManager.Instance.SelectSound();
                 
                 ShowAvaliablePath();
-                TilesMatch(tileSelected, _tileSelect);
+                OnTilesMatch(tileSelected, _tileSelect);
                 tileSelected = null;
                 return;
-            }            
+            }
+            //SoundManager.Instance.ErrorSound();
         }
 
         SoundManager.Instance.SelectSound();
@@ -105,8 +109,7 @@ public class GridsBoard : MonoBehaviour
         int totalTiles = levelData.totalTiles;
         List<int> tileIDList = new();
 
-        MiniGameController.Instance.SetRemainTile(totalTiles);
-        MiniGameController.Instance.ShowRemainTileText(0);
+        MiniGameController.Instance.SetRemainTile(totalTiles);        
 
         for (int i = 0; i < (totalTiles / 2); i++)
         {
@@ -132,33 +135,33 @@ public class GridsBoard : MonoBehaviour
         int idIndex = 0;
         foreach (Vector2Int pos in levelData.activeBlocksPosList)
         {
-            SetRandomTileOnBlock(pos.x, pos.y, tileIDList[idIndex++]);
-        }       
+            SetActiveTileOnBlock(pos.x, pos.y, tileIDList[idIndex++]);
+        }
+        foreach (Vector2Int pos in levelData.obstacleBlocksPosList)
+        {
+            SetObstacleBlock(pos.x, pos.y);
+        }
+        //保存可点击方块字典
+        UpdateRemainingTileListDic();
+        //确认开局不死局
+        CheckRemainingTilePairs();
     }
 
-    private void SetRandomTileOnBlock(int _xLine, int _yLine, int id)
-    {
-        TileData newTile = tilesArray[_xLine, _yLine];
-        newTile.SetTileData(id, _xLine, _yLine, true, iconSpriteArray[id]);
-        AddValidTileOnListDictionary(id, newTile);
-    }
-    private void AddValidTileOnListDictionary(int ID, TileData newTile)
-    {
-        if (remainingTilesListDictionary.TryGetValue(ID, out List<TileData> tileList))
-        {
-            tileList.Add(newTile);
-        }
-        else
-        {
-            remainingTilesListDictionary[ID] = new List<TileData> { newTile };
-        }
-    }
-
+    //检测游戏是否结束
     public void CheckRemainingTilePairs()
-    {        
+    {
         if (remainingTilesListDictionary.Values.Any(list => list.Count > 0))
         {
-            return;
+            if (IsDeadlock())
+            {                
+                ShuffleRemainingTile();
+                return;
+            }
+            else
+            {
+                return;
+            }
+
         }
 
         if (MiniGameController.Instance.IsOnExtraLevel())
@@ -179,6 +182,102 @@ public class GridsBoard : MonoBehaviour
         MiniGameController.Instance.EndGame("GAME CLEAR");
     }
 
+    // 方块成功连接时
+    private void OnTilesMatch(TileData tile1, TileData tile2)
+    {
+        SoundManager.Instance.TileMatchSound();
+        tile1.TileMatchEffect();
+        tile2.TileMatchEffect();
+
+        remainingTilesListDictionary[tile1.ID].Remove(tile1);
+        remainingTilesListDictionary[tile2.ID].Remove(tile2);
+
+        int remainingTiles = remainingTilesListDictionary.Values.Sum(list => list.Count);
+        MiniGameController.Instance.SetRemainTile(remainingTiles);
+        CheckRemainingTilePairs();
+    }
+
+    private void SetObstacleBlock(int _xLine, int _yLine)
+    {
+        TileData newObstacle = tilesBoardArray[_xLine, _yLine];
+        newObstacle.SetTileData(0, _xLine, _yLine, false, null, true);
+    }
+    private void SetActiveTileOnBlock(int _xLine, int _yLine, int id)
+    {
+        TileData newTile = tilesBoardArray[_xLine, _yLine];
+        newTile.SetTileData(id, _xLine, _yLine, true, iconSpriteArray[id], false);       
+    }
+
+    
+    private void UpdateRemainingTileListDic()
+    {
+        remainingTilesListDictionary.Clear();
+        for (int x = 0; x < xLines; x++)
+        {
+            for (int y = 0; y < yLines; y++)
+            {
+                TileData tile = tilesBoardArray[x, y];
+                if (tile!=null && tile.INTERACTBLE)
+                {
+                    if (!remainingTilesListDictionary.ContainsKey(tile.ID))
+                    {
+                        remainingTilesListDictionary[tile.ID] = new List<TileData>();
+                    }
+
+                    remainingTilesListDictionary[tile.ID].Add(tile);
+                }
+            }
+        }
+    }
+
+
+    //检测死局
+    private bool IsDeadlock()
+    {        
+        foreach (int key in remainingTilesListDictionary.Keys)
+        {
+            List<TileData> tileList = remainingTilesListDictionary[key];
+            for (int i = 0; i < tileList.Count; i++)
+            {
+                for (int j = i + 1; j < tileList.Count; j++)
+                {
+                    if (HasValidPath(tileList[i], tileList[j]))
+                    {
+                        pathPointsListTemporary.Clear();
+                        pathLineTilesDicTemporary.Clear();
+                        return false;
+                    }
+                }
+            }
+        }
+        Debug.Log("DeadLock");
+        return true;
+    }
+    //死局重组
+    public void ShuffleRemainingTile()
+    {//遍历保存剩余Tile的ID和位置
+        List<Vector2Int> remainingTilePos = new();
+        List<int> remainingTileID = new();
+        foreach (List<TileData> tileDataList in remainingTilesListDictionary.Values)
+        {
+            foreach (TileData tile in tileDataList)
+            {                
+                remainingTilePos.Add(new Vector2Int(tile.XPOS,tile.YPOS));
+                remainingTileID.Add(tile.ID);
+            }
+        }
+        //打乱ID 根据位置重新分配
+        remainingTileID = remainingTileID.OrderBy(x => Random.value).ToList();
+
+        int idIndex = 0;
+        foreach (Vector2Int pos in remainingTilePos)
+        {
+            SetActiveTileOnBlock(pos.x, pos.y, remainingTileID[idIndex++]);
+        }
+        UpdateRemainingTileListDic();
+        Debug.Log("Shuffle");
+    }
+
     //路径可视化
     #region
     private void ShowAvaliablePath()
@@ -187,16 +286,31 @@ public class GridsBoard : MonoBehaviour
         ActivePathCornerPoint(pathPointsList.Count);
 
         //Path Line Effect   
-        ActivePathLineDictionaryWithCorners(pathPointsList.Count);   
+        ActivePathLineDictionaryWithCorners(pathPointsList.Count);
 
         pathPointsList.Clear();
-        pathLineTilesDictionary.Clear();
+        pathLineTilesDic.Clear();
     }
-        
+    //将临时Point,Line列表传入显示列表    
+    private void TemporaryListToAvaliableList()
+    {   //列表交换属性
+        pathPointsList.Clear();
+        pathPointsList.AddRange(pathPointsListTemporary);
+
+        pathLineTilesDic.Clear();
+        foreach (var kvp in pathLineTilesDicTemporary)
+        {
+            pathLineTilesDic[kvp.Key] = kvp.Value;
+        }
+
+        //清空临时列表
+        pathPointsListTemporary.Clear();
+        pathLineTilesDicTemporary.Clear();
+    }
     private void ActivePathCornerPoint(int pointListCount)
     {
         int startTile = 0;
-        int endTile = pointListCount - 1;                
+        int endTile = pointListCount - 1;
 
         if (pointListCount == 2)
         {// tile match effect
@@ -233,7 +347,7 @@ public class GridsBoard : MonoBehaviour
             direction.x = first.XPOS - corner.XPOS;
             direction.y = end.YPOS - corner.YPOS;
         }
-        
+
         corner.SetCornerSpriteWithDirection(direction);
 
     }
@@ -244,7 +358,7 @@ public class GridsBoard : MonoBehaviour
 
         for (int i = 0; i < CornersCount - 1; i++)
         {
-            if(! pathLineTilesDictionary.TryGetValue(i, out tileList))
+            if (!pathLineTilesDic.TryGetValue(i, out tileList))
             {//如果目标点与拐点相连，无需连线
                 continue;
             }
@@ -263,16 +377,9 @@ public class GridsBoard : MonoBehaviour
                 }
             }
         }
-        
-    }
-    private void AddPathLineOnTileListDictionary(List<TileData> tileList, int corners)
-    {//Corner为Key，添加TileList到字典
-        pathLineTilesDictionary.Add(corners, tileList);
+
     }
 
-    
-
-    
     #endregion
 
     //路径查询
@@ -282,10 +389,10 @@ public class GridsBoard : MonoBehaviour
         if (tile1.ID != tile2.ID || !tile1.INTERACTBLE || !tile2.INTERACTBLE)
             return false;
 
-        if (CheckStraightLine(tile1, tile2,0))
+        if (CheckStraightLine(tile1, tile2, 0))
         {
-            pathPointsList.Add(tile1);
-            pathPointsList.Add(tile2);
+            pathPointsListTemporary.Add(tile1);
+            pathPointsListTemporary.Add(tile2);
             return true;
         }
 
@@ -294,50 +401,45 @@ public class GridsBoard : MonoBehaviour
 
         if (CheckTwoCorner(tile1, tile2))
             return true;
-
+        
         return false;
     }
+
     private bool CheckTwoCorner(TileData start, TileData end)
     {
         for (int x = 0; x < xLines; x++)
         {//水平方向搜索
-            TileData mid1 = tilesArray[x, start.YPOS];
-            TileData mid2 = tilesArray[x, end.YPOS];
+            TileData mid1 = tilesBoardArray[x, start.YPOS];
+            TileData mid2 = tilesBoardArray[x, end.YPOS];
 
-            if (!mid1.INTERACTBLE && !mid2.INTERACTBLE &&
+            if (mid1.IsEmpty() && mid2.IsEmpty() &&
                 CheckStraightLine(start, mid1,0) &&
                 CheckStraightLine(mid1, mid2,1) &&
                 CheckStraightLine(mid2, end,2))
             {
-                pathPointsList.Add(start);
-                pathPointsList.Add(mid1);
-                pathPointsList.Add(mid2);
-                pathPointsList.Add(end);
+                pathPointsListTemporary.AddRange(new[] { start, mid1, mid2, end });
                 return true;
             }
             //False则清理路径列表字典
-            pathLineTilesDictionary.Clear();
+            pathLineTilesDicTemporary.Clear();
 
         }
 
         for (int y = 0; y < yLines; y++)
         {//垂直方向搜索
-            TileData mid1 = tilesArray[start.XPOS, y];
-            TileData mid2 = tilesArray[end.XPOS, y];
+            TileData mid1 = tilesBoardArray[start.XPOS, y];
+            TileData mid2 = tilesBoardArray[end.XPOS, y];
 
-            if (!mid1.INTERACTBLE && !mid2.INTERACTBLE &&
+            if (mid1.IsEmpty() && mid2.IsEmpty() &&
                 CheckStraightLine(start, mid1,0) &&
                 CheckStraightLine(mid1, mid2,1) &&
                 CheckStraightLine(mid2, end,2))
-            {
-                pathPointsList.Add(start);
-                pathPointsList.Add(mid1);
-                pathPointsList.Add(mid2);
-                pathPointsList.Add(end);
+            {                
+                pathPointsListTemporary.AddRange(new[] { start, mid1, mid2, end });
                 return true;
             }
             //False则清理路径列表字典
-            pathLineTilesDictionary.Clear();
+            pathLineTilesDicTemporary.Clear();
 
         }
 
@@ -345,31 +447,31 @@ public class GridsBoard : MonoBehaviour
     }
     private bool CheckOneCorner(TileData tile1, TileData tile2)
     {
-        TileData corner1 = tilesArray[tile1.XPOS, tile2.YPOS];
-        if (!corner1.INTERACTBLE &&
+        TileData corner1 = tilesBoardArray[tile1.XPOS, tile2.YPOS];
+        if (corner1.IsEmpty() &&
             CheckStraightLine(tile1, corner1,0) && 
             CheckStraightLine(corner1, tile2,1))
         {
-            pathPointsList.Add(tile1);
-            pathPointsList.Add(corner1);
-            pathPointsList.Add(tile2);
+            pathPointsListTemporary.Add(tile1);
+            pathPointsListTemporary.Add(corner1);
+            pathPointsListTemporary.Add(tile2);
             return true;
         }
 
-        pathLineTilesDictionary.Clear();
+        pathLineTilesDicTemporary.Clear();
 
-        TileData corner2 = tilesArray[tile2.XPOS, tile1.YPOS];
-        if (!corner2.INTERACTBLE && 
+        TileData corner2 = tilesBoardArray[tile2.XPOS, tile1.YPOS];
+        if (corner2.IsEmpty() && 
             CheckStraightLine(tile1, corner2,0) && 
             CheckStraightLine(corner2, tile2,1))
         {
-            pathPointsList.Add(tile1);
-            pathPointsList.Add(corner2);
-            pathPointsList.Add(tile2);
+            pathPointsListTemporary.Add(tile1);
+            pathPointsListTemporary.Add(corner2);
+            pathPointsListTemporary.Add(tile2);
             return true;
         }
         //False则清理路径列表字典
-        pathLineTilesDictionary.Clear();
+        pathLineTilesDicTemporary.Clear();
         return false;
     }
     private bool CheckStraightLine(TileData tile1, TileData tile2,int corners)
@@ -389,14 +491,15 @@ public class GridsBoard : MonoBehaviour
 
             for (int y = minY + 1; y < maxY; y++)
             {
-                if (tilesArray[tile1.XPOS, y].INTERACTBLE)
+                if (!tilesBoardArray[tile1.XPOS, y].IsEmpty())
                 {                    
                     return false;
                 }
-                templePathLineList.Add(tilesArray[tile1.XPOS, y]);
+                templePathLineList.Add(tilesBoardArray[tile1.XPOS, y]);
             }
-
-            AddPathLineOnTileListDictionary(templePathLineList, corners);
+            
+            //Corner为Key，添加TileList到字典
+            pathLineTilesDicTemporary.Add(corners, templePathLineList);
             return true;
         }
 
@@ -412,15 +515,16 @@ public class GridsBoard : MonoBehaviour
             }
             for (int x = minX + 1; x < maxX; x++)
             {
-                if (tilesArray[x, tile1.YPOS].INTERACTBLE)
+                if (!tilesBoardArray[x, tile1.YPOS].IsEmpty())
                 {
                     return false;
                 }
-                templePathLineList.Add(tilesArray[x, tile1.YPOS]);
+                templePathLineList.Add(tilesBoardArray[x, tile1.YPOS]);
 
             }
 
-            AddPathLineOnTileListDictionary(templePathLineList, corners);
+            //Corner为Key，添加TileList到字典
+            pathLineTilesDicTemporary.Add(corners, templePathLineList);
             return true;
         }
 

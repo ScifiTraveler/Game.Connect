@@ -8,4 +8,6 @@ public class LevelDataSO :ScriptableObject
     public int totalTiles;
 
     public List<Vector2Int> activeBlocksPosList;
+
+    public List<Vector2Int> obstacleBlocksPosList;
 }
